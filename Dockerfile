@@ -1,19 +1,25 @@
 # Build stage
-FROM golang:1.23-alpine3.20 AS builder
+FROM golang:1.21-alpine3.18 AS builder
 
 WORKDIR /app
 
-# Copy go mod files
+# Install git and ca-certificates for go mod download
+RUN apk add --no-cache git ca-certificates tzdata
+
+# Copy go mod files first for better caching
 COPY go.mod go.sum ./
 
 # Download dependencies
-RUN go mod download
+RUN go mod download && go mod verify
 
 # Copy source code
 COPY . .
 
 # Build the application with security flags
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags '-w -s' -o main .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+  -ldflags='-w -s -extldflags "-static"' \
+  -a -installsuffix cgo \
+  -o main .
 
 # Final stage
 FROM alpine:3.20
