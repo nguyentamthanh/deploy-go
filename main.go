@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 
@@ -9,10 +10,15 @@ import (
 
 func main() {
 	// Connect to database
+	fmt.Println("🚀 Starting application...")
 	if err := ConnectDatabase(); err != nil {
-		panic("Failed to connect to database: " + err.Error())
+		fmt.Printf("❌ Failed to connect to database: %v\n", err)
+		panic("Database connection failed: " + err.Error())
 	}
-	defer CloseDatabase()
+	defer func() {
+		fmt.Println("🔌 Closing database connection...")
+		CloseDatabase()
+	}()
 
 	// Tạo Gin router
 	r := gin.Default()

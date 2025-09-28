@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -50,11 +51,16 @@ func ConnectDatabase() error {
 	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s TimeZone=UTC",
 		config.Host, config.User, config.Password, config.DBName, config.Port, config.SSLMode)
 
+	// Log connection details (without password for security)
+	fmt.Printf("🔗 Connecting to database: host=%s user=%s dbname=%s port=%s sslmode=%s\n",
+		config.Host, config.User, config.DBName, config.Port, config.SSLMode)
+
 	// Open connection with GORM
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Info),
 	})
 	if err != nil {
+		fmt.Printf("❌ Database connection failed: %v\n", err)
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
 
@@ -69,6 +75,11 @@ func ConnectDatabase() error {
 	sqlDB.SetMaxIdleConns(25)
 
 	DB = db
+
+	// Test connection with retry mechanism
+	if err := testConnection(db); err != nil {
+		return fmt.Errorf("failed to test database connection: %w", err)
+	}
 
 	// Auto migrate database tables
 	if err := autoMigrate(); err != nil {
@@ -89,6 +100,29 @@ func CloseDatabase() error {
 		return sqlDB.Close()
 	}
 	return nil
+}
+
+// testConnection tests the database connection with retry mechanism
+func testConnection(db *gorm.DB) error {
+	sqlDB, err := db.DB()
+	if err != nil {
+		return err
+	}
+
+	// Retry connection up to 5 times with 2 second intervals
+	for i := 0; i < 5; i++ {
+		if err := sqlDB.Ping(); err != nil {
+			fmt.Printf("⏳ Database connection attempt %d failed, retrying in 2s...\n", i+1)
+			if i < 4 { // Don't sleep on last attempt
+				time.Sleep(2 * time.Second)
+			}
+			continue
+		}
+		fmt.Println("✅ Database connection test successful")
+		return nil
+	}
+
+	return fmt.Errorf("failed to connect to database after 5 attempts")
 }
 
 // autoMigrate automatically creates and migrates database tables using GORM

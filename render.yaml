@@ -35,4 +35,4 @@ services:
     name: deploy-go-db
     plan: free
     databaseName: deploy_go
-    user: deploy_go_user
+    user: postgres
