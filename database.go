@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"gorm.io/driver/postgres"
@@ -25,6 +27,14 @@ type DatabaseConfig struct {
 
 // GetDatabaseConfig returns database configuration from environment variables
 func GetDatabaseConfig() *DatabaseConfig {
+	// Check if DATABASE_URL is provided (Render's default)
+	if databaseURL := os.Getenv("DATABASE_URL"); databaseURL != "" {
+		fmt.Printf("🔗 Using DATABASE_URL for connection\n")
+		return parseDatabaseURL(databaseURL)
+	}
+
+	// Fallback to individual environment variables
+	fmt.Printf("🔗 Using individual environment variables for connection\n")
 	return &DatabaseConfig{
 		Host:     getEnv("DB_HOST", "localhost"),
 		Port:     getEnv("DB_PORT", "5432"),
@@ -43,8 +53,64 @@ func getEnv(key, defaultValue string) string {
 	return defaultValue
 }
 
+// parseDatabaseURL parses DATABASE_URL environment variable
+func parseDatabaseURL(databaseURL string) *DatabaseConfig {
+	u, err := url.Parse(databaseURL)
+	if err != nil {
+		fmt.Printf("⚠️ Failed to parse DATABASE_URL: %v, falling back to individual env vars\n", err)
+		return &DatabaseConfig{
+			Host:     getEnv("DB_HOST", "localhost"),
+			Port:     getEnv("DB_PORT", "5432"),
+			User:     getEnv("DB_USER", "postgres"),
+			Password: getEnv("DB_PASSWORD", "password"),
+			DBName:   getEnv("DB_NAME", "deploy_go"),
+			SSLMode:  getEnv("DB_SSLMODE", "disable"),
+		}
+	}
+
+	// Extract database name from path
+	dbName := strings.TrimPrefix(u.Path, "/")
+	if dbName == "" {
+		dbName = "deploy_go"
+	}
+
+	// Determine SSL mode based on scheme
+	sslMode := "require"
+	if u.Scheme == "postgres" {
+		sslMode = "require"
+	} else if u.Scheme == "postgresql" {
+		sslMode = "disable"
+	}
+
+	// Extract password from URL
+	password, _ := u.User.Password()
+
+	// Set default port if not provided
+	port := u.Port()
+	if port == "" {
+		port = "5432"
+	}
+
+	return &DatabaseConfig{
+		Host:     u.Hostname(),
+		Port:     port,
+		User:     u.User.Username(),
+		Password: password,
+		DBName:   dbName,
+		SSLMode:  sslMode,
+	}
+}
+
 // ConnectDatabase establishes connection to PostgreSQL database using GORM
 func ConnectDatabase() error {
+	// Try DATABASE_URL first (Render's preferred method)
+	if databaseURL := os.Getenv("DATABASE_URL"); databaseURL != "" {
+		fmt.Printf("🔗 Using DATABASE_URL for connection\n")
+		return connectWithDatabaseURL(databaseURL)
+	}
+
+	// Fallback to individual environment variables
+	fmt.Printf("🔗 Using individual environment variables for connection\n")
 	config := GetDatabaseConfig()
 
 	// Construct DSN (Data Source Name) for GORM
@@ -64,6 +130,25 @@ func ConnectDatabase() error {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
 
+	return setupDatabase(db)
+}
+
+// connectWithDatabaseURL connects using DATABASE_URL
+func connectWithDatabaseURL(databaseURL string) error {
+	// Open connection with GORM using DATABASE_URL directly
+	db, err := gorm.Open(postgres.Open(databaseURL), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Info),
+	})
+	if err != nil {
+		fmt.Printf("❌ Database connection with DATABASE_URL failed: %v\n", err)
+		return fmt.Errorf("failed to connect to database with DATABASE_URL: %w", err)
+	}
+
+	return setupDatabase(db)
+}
+
+// setupDatabase configures the database connection
+func setupDatabase(db *gorm.DB) error {
 	// Get underlying sql.DB to configure connection pool
 	sqlDB, err := db.DB()
 	if err != nil {
