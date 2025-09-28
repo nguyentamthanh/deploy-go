@@ -18,11 +18,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags '-w -s' -o 
 # Final stage
 FROM alpine:3.20
 
-# Install ca-certificates for HTTPS requests and update packages
-RUN apk --no-cache add ca-certificates tzdata && \
-  apk --no-cache upgrade && \
-  rm -rf /var/cache/apk/* && \
-  apk --no-cache add --no-scripts --no-deps dumb-init
+# Install ca-certificates for HTTPS requests and dumb-init
+RUN apk --no-cache add ca-certificates tzdata dumb-init
 
 # Create non-root user for security
 RUN addgroup -g 1001 -S appgroup && \
