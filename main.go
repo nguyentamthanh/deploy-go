@@ -14,7 +14,7 @@ func main() {
 	// Route chính
 	r.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
-			"message": "Xin chào! Đây là ứng dụng Golang cơ bản",
+			"message": "Xin chào! Đây là ứng dụng Golang",
 			"status":  "success",
 		})
 	})
