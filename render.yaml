@@ -35,8 +35,9 @@ services:
       - key: DB_SSLMODE
         value: require
 
-  - type: pserv
+  - type: redis
     name: deploy-go-db
     plan: free
-    databaseName: deploy_go
-    user: postgres
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: everywhere

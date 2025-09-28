@@ -1,0 +1,63 @@
+# Build stage
+FROM golang:1.23-alpine3.20 AS builder
+
+WORKDIR /app
+
+# Install dependencies
+RUN apk add --no-cache git ca-certificates tzdata
+
+# Set Go environment variables
+ENV GO111MODULE=on
+ENV GOPROXY=https://proxy.golang.org,direct
+ENV GOSUMDB=sum.golang.org
+ENV CGO_ENABLED=0
+ENV GOOS=linux
+ENV GOARCH=amd64
+
+# Copy go mod files first
+COPY go.mod go.sum ./
+
+# Download dependencies with better error handling
+RUN go mod download -x || \
+  (echo "Retrying go mod download..." && sleep 5 && go mod download -x) || \
+  (echo "Final retry..." && sleep 10 && go mod download -x)
+
+# Verify modules
+RUN go mod verify
+
+# Copy source code
+COPY . .
+
+# Build the application
+RUN go build -a -installsuffix cgo -ldflags '-w -s -extldflags "-static"' -o main .
+
+# Final stage
+FROM alpine:3.20
+
+# Install ca-certificates and dumb-init
+RUN apk --no-cache add ca-certificates tzdata dumb-init
+
+# Create non-root user
+RUN addgroup -g 1001 -S appgroup && \
+  adduser -u 1001 -S appuser -G appgroup
+
+WORKDIR /app
+
+# Copy binary from builder stage
+COPY --from=builder /app/main .
+
+# Change ownership
+RUN chown appuser:appgroup /app/main && chmod 755 /app/main
+
+# Switch to non-root user
+USER appuser
+
+# Set environment variables
+ENV GIN_MODE=release
+
+# Expose port
+EXPOSE 8080
+
+# Run the application
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["./main"]

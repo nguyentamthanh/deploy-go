@@ -1,16 +1,22 @@
 # Build stage
-FROM golang:1.21-alpine3.18 AS builder
+FROM golang:1.23-alpine3.20 AS builder
 
 WORKDIR /app
 
 # Install git and ca-certificates for go mod download
 RUN apk add --no-cache git ca-certificates tzdata
 
+# Set Go environment variables
+ENV GO111MODULE=on
+ENV GOPROXY=https://proxy.golang.org,direct
+ENV GOSUMDB=sum.golang.org
+
 # Copy go mod files first for better caching
 COPY go.mod go.sum ./
 
-# Download dependencies
-RUN go mod download && go mod verify
+# Download dependencies with retry mechanism
+RUN go mod download || (sleep 5 && go mod download) || (sleep 10 && go mod download)
+RUN go mod verify
 
 # Copy source code
 COPY . .
